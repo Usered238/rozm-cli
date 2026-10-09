@@ -1,6 +1,9 @@
 /orig/
 /target/
 /dist/
+/nodejs/bin/
+/nodejs/*.tgz
+node_modules/
 __pycache__/
 *.pyc
 

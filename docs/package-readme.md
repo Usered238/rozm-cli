@@ -19,10 +19,14 @@ Windows / PowerShell:
 .\rozm-cli.exe --text "Привіт`nсвіте" --output result.wav --voice 1 --speed 7
 ```
 
-Required: --text (one argument). Defaults: --output ./out.wav, --voice 1,
+Required: --text (one argument) or --stdin (UTF-8 until EOF), mutually exclusive.
+Defaults: --output ./out.wav, --voice 1,
 --speed 5. Voice range: 1..3; speed range: 1..9. Use --help for help.
 One call writes one mono 11025 Hz unsigned 8-bit PCM WAV. Existing output is
 replaced without confirmation. Only .wav output is supported; MP3 is deferred.
+Use --output - to export binary WAV to stdout without creating a file. Native
+synthesis completes in memory before WAV export starts. The separate rozm-tts
+npm package provides createAudioStream(text, options) for Node.js 22+.
 Errors return exit code 1 with stderr diagnostics, retaining previous output.
 The destination directory must already exist.
 

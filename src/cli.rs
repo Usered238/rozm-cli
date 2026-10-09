@@ -10,6 +10,7 @@ pub const DEFAULT_SPEED: u8 = 5;
 #[derive(Debug)]
 pub struct SynthesisRequest {
     pub text: String,
+    pub stdin: bool,
     pub output: PathBuf,
     pub voice: u8,
     pub speed: u8,
@@ -20,6 +21,7 @@ pub fn parse(
 ) -> io::Result<Option<SynthesisRequest>> {
     let mut arguments = arguments.into_iter();
     let mut text = None;
+    let mut stdin = false;
     let mut output = PathBuf::from(DEFAULT_OUTPUT);
     let mut voice = DEFAULT_VOICE;
     let mut speed = DEFAULT_SPEED;
@@ -30,6 +32,16 @@ pub fn parse(
         })?;
         if option == "--help" || option == "-h" {
             return Ok(None);
+        }
+        if option == "--stdin" {
+            if !seen.insert(option.to_owned()) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "duplicate argument --stdin",
+                ));
+            }
+            stdin = true;
+            continue;
         }
         let (name, inline) = option
             .split_once('=')
@@ -84,10 +96,25 @@ pub fn parse(
             _ => unreachable!(),
         }
     }
-    let text =
-        text.ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "required --text TEXT"))?;
+    if stdin && text.is_some() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "--stdin and --text are mutually exclusive",
+        ));
+    }
+    let text = if stdin {
+        String::new()
+    } else {
+        text.ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "required --text TEXT or --stdin",
+            )
+        })?
+    };
     Ok(Some(SynthesisRequest {
         text,
+        stdin,
         output,
         voice,
         speed,

@@ -4,18 +4,114 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 static NEXT_DIR: AtomicUsize = AtomicUsize::new(0);
 
+#[test]
+fn stdin_accepts_utf8_text_and_rejects_invalid_or_excessive_input_before_output() {
+    let dir = TestDirectory::new();
+    for (input, expected, error) in [
+        (
+            b"\"\xd0\xb0\"\n\xd0\xb0".to_vec(),
+            Some(&include_bytes!("fixtures/original-a-v1-s5.wav")[..]),
+            "",
+        ),
+        (vec![0xff], None, "UTF-8"),
+        (b"a\0b".to_vec(), None, "U+0000"),
+        (vec![b'a'; 32769], None, "32768"),
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_rozm-cli"))
+            .args(["--stdin", "--output", "-"])
+            .env(
+                "ROZM_DATA_DIR",
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("orig"),
+            )
+            .current_dir(&dir.0)
+            .bounded_input(Some(input))
+            .unwrap();
+        if let Some(one) = expected {
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let mut wav = one[..44].to_vec();
+            let length = 2 * (one.len() - 44);
+            wav[4..8].copy_from_slice(&((length + 36) as u32).to_le_bytes());
+            wav[40..44].copy_from_slice(&(length as u32).to_le_bytes());
+            wav.extend_from_slice(&one[44..]);
+            wav.extend_from_slice(&one[44..]);
+            assert!(output.stdout == wav);
+        } else {
+            assert!(!output.status.success());
+            assert!(output.stdout.is_empty());
+            assert!(
+                String::from_utf8_lossy(&output.stderr).contains(error),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+    for args in [
+        vec!["--stdin", "--text", "а"],
+        vec!["--stdin=а"],
+        vec!["--stdin", "--stdin"],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_rozm-cli"))
+            .args(args)
+            .current_dir(&dir.0)
+            .bounded_output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+    }
+    assert_eq!(std::fs::read_dir(&dir.0).unwrap().count(), 0);
+}
+
+#[test]
+fn wav_can_be_streamed_to_stdout_without_creating_a_file() {
+    let dir = TestDirectory::new();
+    let output = Command::new(env!("CARGO_BIN_EXE_rozm-cli"))
+        .args(["--text", "Привіт", "--output", "-"])
+        .env(
+            "ROZM_DATA_DIR",
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("orig"),
+        )
+        .current_dir(&dir.0)
+        .bounded_output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stdout == include_bytes!("fixtures/original-pryvit-v1-s5.wav"));
+    assert_eq!(std::fs::read_dir(&dir.0).unwrap().count(), 0);
+}
+
 trait BoundedOutput {
-    fn bounded_output(&mut self) -> std::io::Result<std::process::Output>;
+    fn bounded_output(&mut self) -> std::io::Result<std::process::Output> {
+        self.bounded_input(None)
+    }
+    fn bounded_input(&mut self, input: Option<Vec<u8>>) -> std::io::Result<std::process::Output>;
 }
 impl BoundedOutput for Command {
-    fn bounded_output(&mut self) -> std::io::Result<std::process::Output> {
-        use std::io::Read;
+    fn bounded_input(&mut self, input: Option<Vec<u8>>) -> std::io::Result<std::process::Output> {
+        use std::io::{Read, Write};
         use std::process::Stdio;
         let mut child = self
-            .stdin(Stdio::null())
+            .stdin(if input.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
+        let writer = input.map(|bytes| {
+            let mut stdin = child.stdin.take().unwrap();
+            std::thread::spawn(move || {
+                // A rejected request may close stdin before every input byte is written.
+                let _ = stdin.write_all(&bytes);
+            })
+        });
         let mut stdout = child.stdout.take().unwrap();
         let mut stderr = child.stderr.take().unwrap();
         let out = std::thread::spawn(move || {
@@ -38,6 +134,9 @@ impl BoundedOutput for Command {
                     let _ = child.wait();
                     let _ = out.join();
                     let _ = err.join();
+                    if let Some(writer) = writer {
+                        let _ = writer.join();
+                    }
                     return Err(result.err().unwrap_or_else(|| {
                         std::io::Error::new(
                             std::io::ErrorKind::TimedOut,
@@ -47,6 +146,9 @@ impl BoundedOutput for Command {
                 }
             }
         };
+        if let Some(writer) = writer {
+            writer.join().unwrap();
+        }
         Ok(std::process::Output {
             status,
             stdout: out.join().unwrap()?,

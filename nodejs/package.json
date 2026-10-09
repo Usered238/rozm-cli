@@ -1,0 +1,12 @@
+{
+  "name": "rozm-tts",
+  "version": "0.1.0",
+  "description": "Rozm Ukrainian text-to-speech as a Node.js WAV Readable stream",
+  "type": "commonjs",
+  "main": "index.cjs",
+  "types": "index.d.ts",
+  "exports": { ".": { "types": "./index.d.ts", "default": "./index.cjs" } },
+  "engines": { "node": ">=22" },
+  "files": ["index.cjs", "index.d.ts", "README.md", "bin/"],
+  "scripts": { "test": "node --test test/*.test.cjs" }
+}

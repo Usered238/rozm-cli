@@ -1,4 +1,8 @@
-use rozm_cli::{engine, export::wav::WavExporter, resources::ResourceLocation};
+use rozm_cli::{
+    engine,
+    export::{AudioExporter, wav::WavExporter},
+    resources::ResourceLocation,
+};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -14,13 +18,33 @@ fn main() -> ExitCode {
 }
 
 fn run(arguments: &[std::ffi::OsString]) -> std::io::Result<()> {
-    let Some(request) = rozm_cli::cli::parse(arguments.iter().cloned())? else {
+    let Some(mut request) = rozm_cli::cli::parse(arguments.iter().cloned())? else {
         println!(
-            "rozm-cli --text TEXT [--output PATH] [--voice 1..3] [--speed 1..9]\n\nOutput: WAV only; default ./out.wav, overwritten without confirmation.\nDefaults: voice 1, speed 5.\nResources: ROZM_DATA_DIR or data/ beside the executable."
+            "rozm-cli (--text TEXT | --stdin) [--output PATH|-] [--voice 1..3] [--speed 1..9]\n\nInput: --stdin reads UTF-8 text until EOF (32768 bytes maximum).\nOutput: WAV only; '-' streams binary WAV to stdout. Default ./out.wav, overwritten without confirmation.\nDefaults: voice 1, speed 5.\nResources: ROZM_DATA_DIR or data/ beside the executable."
         );
         return Ok(());
     };
-    rozm_cli::export::ExportFormat::from_path(&request.output)?;
+    let stdout = request.output.as_os_str() == "-";
+    if !stdout {
+        rozm_cli::export::ExportFormat::from_path(&request.output)?;
+    }
+    if request.stdin {
+        use std::io::Read;
+        let mut bytes = Vec::new();
+        std::io::stdin()
+            .lock()
+            .take(32769)
+            .read_to_end(&mut bytes)?;
+        if bytes.len() > 32768 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "text exceeds 32768 UTF-8 byte limit",
+            ));
+        }
+        request.text = String::from_utf8(bytes).map_err(|_| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "stdin is not valid UTF-8")
+        })?;
+    }
     rozm_cli::text::validate(&request.text)?;
     let location = ResourceLocation::discover()?;
     let dictionary = location.load_dictionary()?;
@@ -52,5 +76,12 @@ fn run(arguments: &[std::ffi::OsString]) -> std::io::Result<()> {
             "text produces no speech",
         ));
     }
-    rozm_cli::export::write_atomic(&WavExporter, &audio, &request.output)
+    if stdout {
+        use std::io::Write;
+        let mut output = std::io::stdout().lock();
+        WavExporter.export(&audio, &mut output)?;
+        output.flush()
+    } else {
+        rozm_cli::export::write_atomic(&WavExporter, &audio, &request.output)
+    }
 }
