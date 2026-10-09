@@ -1,4 +1,4 @@
-//! Portable interfaces for the planned Rozm CLI. Synthesis is not implemented yet.
+//! Portable native Rozm synthesis and WAV export, without GUI or audio devices.
 
 pub mod cli;
 pub mod engine;

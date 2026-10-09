@@ -1,28 +1,104 @@
 # Rozm CLI
 
-Rust scaffold for native text-to-WAV synthesis using algorithms and, where
-needed, binary speech data from the original Rozm application.
+Нативный TTS на Rust: украинский текст → один WAV, с алгоритмами и голосовыми
+данными Rozm. Работает без окон, аудиоустройства, Python и оригинального EXE.
+Целевые платформы: Ubuntu 24.04 x86_64 и Windows x86 (Win32).
 
-TTS, argument parsing and WAV encoding are not implemented yet. The executable
-returns an error and creates no audio. See [PLAN.md](PLAN.md) for the CLI contract.
+Готовые локальные комплекты находятся в `dist/ubuntu-x86_64/` и `dist/win32/`.
+Переносите каталог целиком: бинарник использует `data/` рядом с собой.
 
-First target: Ubuntu 24.04 x86_64 (`x86_64-unknown-linux-gnu`); then Win32 x86
-(`i686-pc-windows-msvc`). No GUI/audio device is required by the planned engine.
-MP3 implementation is deferred until explicitly requested.
-
-```sh
-cargo check
-cargo fmt --check
-cargo build --release --target x86_64-unknown-linux-gnu
+```bash
+./dist/ubuntu-x86_64/rozm-cli --text 'Привіт, світе!'
+./dist/ubuntu-x86_64/rozm-cli --text '123' --output ./result.wav --voice 1 --speed 7
+# Реальный перенос строки в Bash:
+./dist/ubuntu-x86_64/rozm-cli --text $'"Привіт"\nсвіте'
 ```
 
-Build Linux on Linux with its toolchain/linker; selecting a target on Windows
-does not supply a cross-compilation environment. Win32 requires the Rust target
-and Windows x86 linker/SDK.
+```powershell
+.\dist\win32\rozm-cli.exe --text 'Привіт, світе!'
+# Реальный перенос строки в PowerShell:
+.\dist\win32\rozm-cli.exe --text "Привіт`nсвіте" --output '.\запис з пробілами.wav'
+```
 
-Planned arguments: required --text, optional --output (./out.wav), --voice (1),
---speed (5). Existing output is overwritten without confirmation. Only WAV is
-initially accepted.
+| Аргумент | Значение | По умолчанию |
+|---|---|---|
+| `--text TEXT` | Обязательный текст одним аргументом | — |
+| `--output PATH` | Путь с расширением `.wav` (регистр неважен) | `./out.wav` |
+| `--voice N` | 1 — Анатоль, 2 — Стьопа, 3 — Руся | 1 |
+| `--speed N` | Целое число 1–9 | 5 |
+| `--help`, `-h` | Справка без загрузки данных | — |
 
-Code: src/{text,resources,engine,export}. Fixtures: tests/fixtures. Local originals,
-voice data, builds and generated audio are ignored; Cargo.lock is tracked.
+Допускается форма `--text=...`. Дефис в начале значения не превращает текст в
+опцию. Повторяющиеся/неизвестные параметры отклоняются. Код завершения — 0 при
+успехе, 1 при ошибке; диагностика идёт в stderr.
+
+`out.wav` создаётся в текущей директории. Существующий файл заменяется без
+подтверждения: новый WAV записывается во временный файл в той же директории,
+затем заменяет целевой. Ошибка до замены сохраняет прежний файл; временный файл
+удаляется. Родительскую директорию нужно создать заранее.
+
+Формат совпадает с Rozm: PCM mono, 11025 Гц, unsigned 8-bit. MP3 и другие
+расширения возвращают ошибку. Для будущих форматов оставлен интерфейс
+`AudioExporter`; MP3-кодирование отложено до явного запроса.
+
+Текст проверяется до синтеза. Поддерживаются украинская кириллица, ASCII,
+типографские кавычки/апострофы, тире, многоточие и `№`. Latin-слова используют
+восстановленную транслитерацию, числа — украинские количественные формы.
+Реальные LF/CRLF/CR разделяют фразы; два символа `\n` остаются текстом.
+Текст не передаётся в shell и не выполняется. Emoji и комбинируемые знаки
+ударения возвращают ошибку с кодом Unicode. NUL не допускается самим argv ОС.
+Лимиты: 32768 UTF-8 байт текста, 32 MiB на файл ресурса, 64 MiB выходного PCM;
+системный предел длины командной строки может быть меньше.
+
+Сохраняются особенности исходного движка: `\` или апостроф после гласной
+задают ударение; `#1`/`#2`/`#3` переключают голос. Скорость влияет только на
+Анатоля (голос 1); банки голосов 2 и 3 в оригинале не меняют скорость.
+Словарь не гарантирует верное произношение неизвестных слов. Оригинальная
+нормализация пропускает `ґ`/`Ґ`; это поведение сохранено и покрыто эталоном.
+Словарь английского произношения `EUtDic.txt` в исходном комплекте отсутствует,
+поэтому английский обрабатывается транслитерацией, без словарного произношения.
+
+Для разработки задайте `ROZM_DATA_DIR` на каталог данных (относительный путь
+разрешается относительно рабочей директории). При отсутствии переменной
+используется `data/` рядом с запускаемым бинарником, независимо от cwd.
+Состав данных описан в [data/README.md](data/README.md).
+
+## Сборка и проверка
+
+Нужны Rust 1.88+ и системный линкер. Rust-зависимостей из crates.io нет.
+На Ubuntu установите обычный Rust toolchain и `build-essential`, затем:
+
+```bash
+cargo build --offline --release
+cargo test --offline --test cli
+sh scripts/package.sh
+```
+
+На Windows нужны MSVC Build Tools с x86-компонентами и Windows SDK:
+
+```powershell
+rustup target add i686-pc-windows-msvc
+cargo build --offline --release --target i686-pc-windows-msvc
+cargo test --offline --target i686-pc-windows-msvc --test cli
+.\scripts\package.ps1
+```
+
+Win32 собирается со статическим CRT. Поддержка Win32 здесь означает x86 EXE
+на современной Windows; совместимость с Windows XP/7 не заявляется.
+Linux собирайте на Linux: выбор GNU target на Windows сам по себе не даёт линкер.
+
+Для тестов положите бинарные ресурсы в `orig/`. Они используют только реальный
+CLI-процесс с 30-секундным дедлайном. Набор сравнивает WAV с оригинальными
+процедурами Rozm и проверяет ввод, перезапись, ошибки и ресурсы.
+Происхождение эталонов и границы сравнения: [tests/README.md](tests/README.md).
+
+```sh
+cargo fmt --check
+cargo clippy --offline --all-targets -- -D warnings
+```
+
+Структура: `src/cli.rs`, `src/text/`, `src/resources/`, `src/engine/`,
+`src/export/`; интеграционные тесты в `tests/`, упаковка в `scripts/`,
+исследовательские инструменты в `tools/`. Локальные данные, `orig/`, `dist/`,
+`target/` и созданное аудио исключены из Git; `Cargo.lock` и WAV-эталоны тестов
+сохраняются в репозитории.
