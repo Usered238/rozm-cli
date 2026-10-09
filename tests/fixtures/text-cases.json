@@ -1,0 +1,17 @@
+[
+  {"id": "double-quotes", "text": "Він сказав: \"Привіт!\""},
+  {"id": "apostrophes", "text": "п'ять, пам’ять, обʼєкт"},
+  {"id": "lf", "text": "Перший рядок.\nДругий рядок."},
+  {"id": "crlf", "text": "Перший рядок.\r\nДругий рядок."},
+  {"id": "cr", "text": "Перший рядок.\rДругий рядок."},
+  {"id": "literal-backslash-n", "text": "Перший\\nдругий"},
+  {"id": "backslashes-and-quotes", "text": "C:\\data\\ \"текст\" 'слово'"},
+  {"id": "leading-dash", "text": "-приклад --output текст"},
+  {"id": "shell-metacharacters", "text": "$HOME `echo` ; & | (текст)"},
+  {"id": "ukrainian", "text": "Їжак, ґанок, єдність, Україна."},
+  {"id": "typographic-quotes", "text": "«Привіт» “світе”"},
+  {"id": "unsupported-symbols", "text": "Привіт 🙂 é"},
+  {"id": "empty", "text": ""},
+  {"id": "whitespace", "text": " \t\r\n "},
+  {"id": "nul-api-only", "text": "До\u0000після", "scope": "text-api-only"}
+]

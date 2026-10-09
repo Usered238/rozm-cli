@@ -1,0 +1,25 @@
+/orig/
+/target/
+/dist/
+
+# Local speech data; documentation stays tracked.
+/data/*
+!/data/README.md
+
+# Generated audio and temporary output.
+*.wav
+*.mp3
+*.pcm
+*.tmp
+*.part
+!/tests/fixtures/**/*.wav
+
+# Local machine/editor files.
+.env
+.env.local
+/.idea/
+/.vscode/
+Thumbs.db
+.DS_Store
+
+# Cargo.lock is tracked for this executable application.

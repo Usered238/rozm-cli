@@ -1,0 +1,8 @@
+[package]
+name = "rozm-cli"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Rust scaffold for native Rozm text-to-WAV synthesis"
+
+[dependencies]
